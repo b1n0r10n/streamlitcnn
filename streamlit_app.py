@@ -1,4 +1,8 @@
 import streamlit as st
+
+# Panggil set_page_config paling awal
+st.set_page_config(page_title="Deteksi Pneumonia", page_icon="🩺", layout="centered")
+
 import os
 import numpy as np
 import tensorflow as tf
@@ -16,7 +20,7 @@ def load_keras_model(model_path):
 # Pastikan model h5 berada di direktori kerja yang sama
 model_path = 'best_pneumonia_model_initial_labkom_VGG16.h5'
 if not os.path.exists(model_path):
-    st.error("Model file not found. Pastikan 'best_pneumonia_model_initial.h5' ada di direktori kerja.")
+    st.error("Model file not found. Pastikan 'best_pneumonia_model_initial_labkom_VGG16.h5' ada di direktori kerja.")
     st.stop()
 
 # Load model
@@ -43,13 +47,11 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None
     last_conv_layer_output = last_conv_layer_output[0]
     heatmap = last_conv_layer_output @ pooled_grads[..., tf.newaxis]
     heatmap = tf.squeeze(heatmap)
-    # Normalisasi heatmap
     heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
     return heatmap.numpy()
 
 # Fungsi prediksi dan pembuatan heatmap
 def predict_and_generate_heatmap(img, model, last_conv_layer_name, preprocess_input, img_size=(img_height, img_width)):
-    # img adalah objek PIL Image
     img_resized = img.resize(img_size)
     img_array = image.img_to_array(img_resized)
     img_array_expanded = np.expand_dims(img_array, axis=0)
@@ -62,7 +64,6 @@ def predict_and_generate_heatmap(img, model, last_conv_layer_name, preprocess_in
 
     heatmap = make_gradcam_heatmap(img_array_preprocessed, model, last_conv_layer_name)
 
-    # Resize heatmap ke ukuran gambar asli
     original_width, original_height = img.size
     heatmap = cv2.resize(heatmap, (original_width, original_height))
     heatmap = np.uint8(255 * heatmap)
@@ -72,57 +73,17 @@ def predict_and_generate_heatmap(img, model, last_conv_layer_name, preprocess_in
     superimposed_img = heatmap * 0.4 + original_array
     superimposed_img = Image.fromarray(np.uint8(superimposed_img))
 
-    # Tambahkan teks prediksi pada gambar
     draw = ImageDraw.Draw(superimposed_img)
     font = ImageFont.load_default()
     text = f"Prediction: {label}, Probability: {prob_percent:.2f}%"
-    bbox = font.getbbox(text)
-    text_width = bbox[2] - bbox[0]
-    text_height = bbox[3] - bbox[1]
-
-    draw.rectangle([(0, 0), (text_width + 10, text_height + 10)], fill='black')
+    draw.rectangle([(0, 0), (400, 20)], fill='black')
     draw.text((5, 5), text, fill='white', font=font)
 
     return superimposed_img, label, prob_percent
 
-# HTML dari index.html (dijadikan string)
-index_html = """<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Deteksi Pneumonia</title>
-</head>
-<body>
-    <h1>Upload Gambar X-Ray</h1>
-    <p>Silakan upload gambar melalui widget di bawah ini:</p>
-</body>
-</html>
-"""
-
-# HTML dari result.html (dijadikan string). Di sini kita akan menggunakan HTML ini hanya sebagai layout,
-# sebab gambar akan kita tampilkan langsung lewat st.image().
-result_html = """<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Hasil Deteksi</title>
-</head>
-<body>
-    <h1>Hasil Prediksi</h1>
-    <h2 id="prediction-result">Label & Probability akan dimasukkan dari Streamlit</h2>
-    <h3>Gambar Asli:</h3>
-    <p>Akan ditampilkan dengan st.image()</p>
-    <h3>Gambar dengan Heatmap:</h3>
-    <p>Akan ditampilkan dengan st.image()</p>
-</body>
-</html>
-"""
-
-# Mulai Streamlit
-st.set_page_config(page_title="Deteksi Pneumonia", page_icon="🩺", layout="centered")
-st.markdown(index_html, unsafe_allow_html=True)
+# Tampilan Halaman Utama
+st.markdown("<h1 style='text-align: center; color: white;'>Deteksi Pneumonia dengan Grad-CAM</h1>", unsafe_allow_html=True)
+st.write("### Unggah gambar X-Ray dada Anda untuk memprediksi apakah ada tanda-tanda **Pneumonia**.")
 
 # Widget upload dan tombol prediksi
 uploaded_file = st.file_uploader("Upload gambar (X-Ray):", type=["png", "jpg", "jpeg"])
@@ -133,13 +94,12 @@ if uploaded_file is not None and predict_button:
     img = Image.open(uploaded_file).convert("RGB")
     result_img, label, prob_percent = predict_and_generate_heatmap(img, model, last_conv_layer_name, preprocess_input)
 
-    # Tampilkan hasil menggunakan HTML result
-    # Kita masukkan label dan probability ke dalam HTML ini melalui st.markdown
-    custom_result_html = result_html.replace("Label & Probability akan dimasukkan dari Streamlit", f"Label: {label}, Probability: {prob_percent:.2f}%")
-    st.markdown(custom_result_html, unsafe_allow_html=True)
+    # Tampilkan hasil
+    st.subheader(f"**Prediksi: {label}**")
+    st.write(f"**Probabilitas: {prob_percent:.2f}%**")
 
     # Tampilkan gambar asli
     st.image(img, caption="Gambar Asli", use_column_width=True)
 
     # Tampilkan gambar dengan heatmap
-    st.image(result_img, caption="Gambar dengan Heatmap", use_column_width=True)
+    st.image(result_img, caption="Gambar dengan Heatmap Grad-CAM", use_column_width=True)
